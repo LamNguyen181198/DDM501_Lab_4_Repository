@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # ==========================================
   # DATABASE
@@ -74,6 +76,15 @@ services:
       context: ./mlflow
       dockerfile: Dockerfile
     container_name: ${USER}_monitoring-mlflow
+    # command: >
+    #   bash -c "
+    #     mlflow server \
+    #       --backend-store-uri postgresql://mlflow:mlflow@postgres:5432/mlflow \
+    #       --default-artifact-root s3://mlflow/artifacts \
+    #       --host 0.0.0.0 \
+    #       --port 5000 \
+    #       --gunicorn-opts '--workers 4 --timeout 300'
+    #   "
     environment:
       - AWS_ACCESS_KEY_ID=minio
       - AWS_SECRET_ACCESS_KEY=minio123
@@ -89,14 +100,13 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      test: ["CMD-SHELL", "python -c 'import urllib.request; print(urllib.request.urlopen(\"http://0.0.0.0:5000/health\").getcode())'"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     networks:
       - monitoring
-    restart: unless-stopped
 
   # ==========================================
   # FASTAPI MODEL SERVING
@@ -204,6 +214,63 @@ services:
     networks:
       - monitoring
     restart: unless-stopped
+
+  # ==========================================
+  # AIRFLOW (OPTIONAL)
+  # ==========================================
+  # Uncomment if you want Airflow monitoring
+  
+  # airflow-webserver:
+  #   image: apache/airflow:2.10.2
+  #   container_name: monitoring-airflow-webserver
+  #   environment:
+  #     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  #     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://mlflow:mlflow@postgres:5432/airflow
+  #     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+  #     AIRFLOW__METRICS__STATSD_ON: 'true'
+  #     AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+  #     AIRFLOW__METRICS__STATSD_PORT: 9125
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - monitoring
+  #   command: webserver
+  
+  # airflow-scheduler:
+  #   image: apache/airflow:2.10.2
+  #   container_name: monitoring-airflow-scheduler
+  #   environment:
+  #     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  #     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://mlflow:mlflow@postgres:5432/airflow
+  #     AIRFLOW__METRICS__STATSD_ON: 'true'
+  #     AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+  #     AIRFLOW__METRICS__STATSD_PORT: 9125
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - monitoring
+  #   command: scheduler
+  
+  # statsd-exporter:
+  #   image: prom/statsd-exporter:latest
+  #   container_name: monitoring-statsd
+  #   command:
+  #     - '--statsd.mapping-config=/tmp/statsd_mapping.yml'
+  #   ports:
+  #     - "9102:9102"
+  #     - "9125:9125/udp"
+  #   volumes:
+  #     - ./config/statsd_mapping.yml:/tmp/statsd_mapping.yml:ro
+  #   networks:
+  #     - monitoring
 
 # ==========================================
 # VOLUMES

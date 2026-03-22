@@ -15,68 +15,73 @@ model:
   version: "1"
   feature_count: 13
 
-# Wine Dataset Feature Ranges (for realistic data generation)
+# Wine dataset feature ranges (sklearn.datasets.load_wine)
 features:
-  fixed_acidity:
-    min: 4.6
-    max: 15.9
-    mean: 8.32
-    std: 1.74
-  volatile_acidity:
-    min: 0.12
-    max: 1.58
-    mean: 0.53
-    std: 0.18
-  citric_acid:
-    min: 0.0
-    max: 1.0
-    mean: 0.27
-    std: 0.19
-  residual_sugar:
-    min: 0.9
-    max: 15.5
-    mean: 2.54
-    std: 1.41
-  chlorides:
-    min: 0.012
-    max: 0.611
-    mean: 0.087
-    std: 0.047
-  free_sulfur_dioxide:
-    min: 1.0
-    max: 72.0
-    mean: 15.87
-    std: 10.46
-  total_sulfur_dioxide:
-    min: 6.0
-    max: 289.0
-    mean: 46.47
-    std: 32.90
-  density:
-    min: 0.99007
-    max: 1.00369
-    mean: 0.9967
-    std: 0.0019
-  pH:
-    min: 2.74
-    max: 4.01
-    mean: 3.31
-    std: 0.15
-  sulphates:
-    min: 0.33
-    max: 2.0
-    mean: 0.66
-    std: 0.17
   alcohol:
-    min: 8.4
-    max: 14.9
-    mean: 10.42
-    std: 1.07
-  quality:
-    min: 3
-    max: 8
-    mean: 5.64
-    std: 0.81
+    min: 11.03
+    max: 14.83
+    mean: 13.000618
+    std: 0.809543
+  malic_acid:
+    min: 0.74
+    max: 5.8
+    mean: 2.336348
+    std: 1.114004
+  ash:
+    min: 1.36
+    max: 3.23
+    mean: 2.366517
+    std: 0.273572
+  alcalinity_of_ash:
+    min: 10.6
+    max: 30.0
+    mean: 19.494944
+    std: 3.33017
+  magnesium:
+    min: 70.0
+    max: 162.0
+    mean: 99.741573
+    std: 14.242308
+  total_phenols:
+    min: 0.98
+    max: 3.88
+    mean: 2.295112
+    std: 0.624091
+  flavanoids:
+    min: 0.34
+    max: 5.08
+    mean: 2.02927
+    std: 0.996049
+  nonflavanoid_phenols:
+    min: 0.13
+    max: 0.66
+    mean: 0.361854
+    std: 0.124103
+  proanthocyanins:
+    min: 0.41
+    max: 3.58
+    mean: 1.590899
+    std: 0.570749
+  color_intensity:
+    min: 1.28
+    max: 13.0
+    mean: 5.05809
+    std: 2.311765
+  hue:
+    min: 0.48
+    max: 1.71
+    mean: 0.957449
+    std: 0.227929
+  od280/od315_of_diluted_wines:
+    min: 1.27
+    max: 4.0
+    mean: 2.611685
+    std: 0.707993
+  proline:
+    min: 278.0
+    max: 1680.0
+    mean: 746.893258
+    std: 314.021657
 
 # Simulation Scenarios
 scenarios:
