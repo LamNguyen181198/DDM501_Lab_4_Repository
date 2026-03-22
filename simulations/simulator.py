@@ -9,14 +9,12 @@ Simulate prediction requests to API and capture to Evidently
 import requests
 import time
 import numpy as np
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from datetime import datetime
 from tqdm import tqdm
 from colorama import Fore, Style, init
 import yaml
-import json
 import logging
-from pathlib import Path
 
 from data_generator import WineDataGenerator
 
@@ -240,7 +238,7 @@ class PredictionSimulator:
         
         if self.stats['predictions']:
             predictions = self.stats['predictions']
-            logger.info(f"\nPrediction Statistics:")
+            logger.info("\nPrediction Statistics:")
             logger.info(f"  Mean:              {np.mean(predictions):.3f}")
             logger.info(f"  Std:               {np.std(predictions):.3f}")
             logger.info(f"  Min:               {np.min(predictions):.3f}")

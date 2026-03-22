@@ -16,7 +16,6 @@ from sklearn.datasets import load_wine
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-import numpy as np
 import os
 
 # ============================================
@@ -88,7 +87,7 @@ with mlflow.start_run(run_name="RandomForest_v1") as run:
     precision = precision_score(y_test, y_pred, average='weighted')
     recall = recall_score(y_test, y_pred, average='weighted')
     
-    print(f"\n📈 Model Performance:")
+    print("\n📈 Model Performance:")
     print(f"   Accuracy:  {accuracy:.4f}")
     print(f"   F1 Score:  {f1:.4f}")
     print(f"   Precision: {precision:.4f}")
@@ -115,7 +114,7 @@ with mlflow.start_run(run_name="RandomForest_v1") as run:
     )
     
     run_id = run.info.run_id
-    print(f"\n Model logged to MLFlow!")
+    print("\n Model logged to MLFlow!")
     print(f"   Run ID: {run_id}")
 
 # ============================================
@@ -140,10 +139,10 @@ if model_versions:
         archive_existing_versions=True  # Archive old production versions
     )
     
-    print(f"✅ Model promoted to Production!")
+    print("✅ Model promoted to Production!")
     print(f"   Model: {MODEL_NAME}")
     print(f"   Version: {latest_version}")
-    print(f"   Stage: Production")
+    print("   Stage: Production")
 else:
     print("❌ No model versions found")
 
@@ -154,13 +153,13 @@ else:
 print("\n" + "="*50)
 print(" SETUP COMPLETE!")
 print("="*50)
-print(f"\n Next steps:")
-print(f"   1. Start API: docker-compose up -d api")
-print(f"   2. Test API: curl http://localhost:8000/health")
-print(f"   3. Make prediction: curl -X POST http://localhost:8000/predict \\")
-print(f"      -H 'Content-Type: application/json' \\")
+print("\n Next steps:")
+print("   1. Start API: docker-compose up -d api")
+print("   2. Test API: curl http://localhost:8000/health")
+print("   3. Make prediction: curl -X POST http://localhost:8000/predict \\")
+print("      -H 'Content-Type: application/json' \\")
 print(f"      -d '{{'features': {X_test[0].tolist()}}}'")
-print(f"   4. View metrics: http://localhost:8000/metrics")
-print(f"   5. View Grafana: http://localhost:3000")
-print(f"   6. View MLFlow: http://localhost:5000")
+print("   4. View metrics: http://localhost:8000/metrics")
+print("   5. View Grafana: http://localhost:3000")
+print("   6. View MLFlow: http://localhost:5000")
 print()

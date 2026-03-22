@@ -11,13 +11,11 @@ This service provides:
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import pandas as pd
-import numpy as np
 import logging
-import os
 import json
 from datetime import datetime
 from pathlib import Path
@@ -25,9 +23,6 @@ from pathlib import Path
 # Evidently imports
 from evidently.report import Report
 from evidently.metric_preset import DataDriftPreset, DataQualityPreset
-from evidently.metrics import DatasetDriftMetric, ColumnDriftMetric
-from evidently.test_suite import TestSuite
-from evidently.tests import TestColumnDrift, TestShareOfDriftedColumns
 
 # Prometheus metrics
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -322,7 +317,7 @@ async def analyze_drift(
                 detail="No production data available for analysis"
             )
         
-        logger.info(f"🔍 Starting drift analysis...")
+        logger.info("🔍 Starting drift analysis...")
         logger.info(f"   Reference samples: {len(data_store.reference_data)}")
         logger.info(f"   Production samples: {len(production_df)}")
         

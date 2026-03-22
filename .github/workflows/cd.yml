@@ -1,13 +1,24 @@
 name: CD
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 jobs:
-  build-images:
+  publish-images:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
     runs-on: ubuntu-latest
 
     permissions:
@@ -17,30 +28,72 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build API image
+      - name: API image metadata
+        id: meta_api
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/ml-monitoring-api
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+
+      - name: Build and push API image
         uses: docker/build-push-action@v5
         with:
           context: ./api
           file: ./api/Dockerfile
-          push: false
-          tags: local/ml-monitoring-api:latest
+          push: true
+          tags: ${{ steps.meta_api.outputs.tags }}
+          labels: ${{ steps.meta_api.outputs.labels }}
 
-      - name: Build Evidently image
+      - name: Evidently image metadata
+        id: meta_evidently
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/ml-monitoring-evidently
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+
+      - name: Build and push Evidently image
         uses: docker/build-push-action@v5
         with:
           context: ./evidently
           file: ./evidently/Dockerfile
-          push: false
-          tags: local/ml-monitoring-evidently:latest
+          push: true
+          tags: ${{ steps.meta_evidently.outputs.tags }}
+          labels: ${{ steps.meta_evidently.outputs.labels }}
 
-      - name: Build MLflow image
+      - name: MLflow image metadata
+        id: meta_mlflow
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/ml-monitoring-mlflow
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+
+      - name: Build and push MLflow image
         uses: docker/build-push-action@v5
         with:
           context: ./mlflow
           file: ./mlflow/Dockerfile
-          push: false
-          tags: local/ml-monitoring-mlflow:latest
+          push: true
+          tags: ${{ steps.meta_mlflow.outputs.tags }}
+          labels: ${{ steps.meta_mlflow.outputs.labels }}

@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 import mlflow
 import mlflow.pyfunc
 import numpy as np
@@ -184,7 +183,7 @@ class ModelManager:
             
             MODEL_LOAD_TIME.labels(model_name=self.model_name).set(self.load_time)
             
-            logger.info(f"   Model loaded successfully!")
+            logger.info("   Model loaded successfully!")
             logger.info(f"   Model: {self.model_name}")
             logger.info(f"   Version: {self.model_version}")
             logger.info(f"   Load time: {self.load_time:.2f}s")
