@@ -1,0 +1,46 @@
+name: CD
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          file: ./api/Dockerfile
+          push: false
+          tags: local/ml-monitoring-api:latest
+
+      - name: Build Evidently image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./evidently
+          file: ./evidently/Dockerfile
+          push: false
+          tags: local/ml-monitoring-evidently:latest
+
+      - name: Build MLflow image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mlflow
+          file: ./mlflow/Dockerfile
+          push: false
+          tags: local/ml-monitoring-mlflow:latest
