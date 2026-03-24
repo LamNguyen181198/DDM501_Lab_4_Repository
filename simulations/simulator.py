@@ -9,6 +9,7 @@ Simulate prediction requests to API and capture to Evidently
 import requests
 import time
 import numpy as np
+import os
 from typing import Dict, Optional
 from datetime import datetime
 from tqdm import tqdm
@@ -38,6 +39,10 @@ class PredictionSimulator:
             self.config = yaml.safe_load(f)
         
         self.api_config = self.config['api']
+        self.api_config['prediction_url'] = os.getenv('SIM_API_PREDICTION_URL', self.api_config['prediction_url'])
+        self.api_config['health_url'] = os.getenv('SIM_API_HEALTH_URL', self.api_config['health_url'])
+        self.api_config['evidently_capture_url'] = os.getenv('SIM_EVIDENTLY_CAPTURE_URL', self.api_config['evidently_capture_url'])
+        self.api_config['evidently_analyze_url'] = os.getenv('SIM_EVIDENTLY_ANALYZE_URL', self.api_config['evidently_analyze_url'])
         self.data_generator = WineDataGenerator(config_path)
         
         # Statistics

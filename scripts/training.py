@@ -22,15 +22,15 @@ import os
 # CONFIGURATION
 # ============================================
 
-MLFLOW_TRACKING_URI = 'http://localhost:5000'
-MODEL_NAME = "wine_quality_model"
-EXPERIMENT_NAME = "wine_quality_experiment"
+MLFLOW_TRACKING_URI = os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5000')
+MODEL_NAME = os.getenv('MODEL_NAME', "wine_quality_model")
+EXPERIMENT_NAME = os.getenv('EXPERIMENT_NAME', "wine_quality_experiment")
 
 # Configure MinIO S3 for artifacts
-os.environ['MLFLOW_S3_ENDPOINT_URL'] = 'http://localhost:9000'
-os.environ['AWS_ACCESS_KEY_ID'] = 'minio'
-os.environ['AWS_SECRET_ACCESS_KEY'] = 'minio123'
-os.environ['MLFLOW_S3_IGNORE_TLS'] = 'true'
+os.environ['MLFLOW_S3_ENDPOINT_URL'] = os.getenv('MLFLOW_S3_ENDPOINT_URL', 'http://localhost:9000')
+os.environ['AWS_ACCESS_KEY_ID'] = os.getenv('AWS_ACCESS_KEY_ID', 'minio')
+os.environ['AWS_SECRET_ACCESS_KEY'] = os.getenv('AWS_SECRET_ACCESS_KEY', 'minio123')
+os.environ['MLFLOW_S3_IGNORE_TLS'] = os.getenv('MLFLOW_S3_IGNORE_TLS', 'true')
 
 print(f"🔧 MLFlow Tracking URI: {MLFLOW_TRACKING_URI}")
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)

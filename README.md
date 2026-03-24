@@ -18,6 +18,7 @@ A production-ready machine learning monitoring system using MLFlow, Prometheus, 
 - [Evidently & Drift Monitoring](#-evidently--drift-monitoring)
 - [Simulations & Load Testing](#-simulations--load-testing)
 - [API Documentation](#-api-documentation)
+- [Airflow DAG Orchestration](#-airflow-dag-orchestration)
 - [Troubleshooting](#-troubleshooting)
 - [Project Structure](#-project-structure)
 
@@ -250,6 +251,51 @@ curl http://localhost:8001/health
 ```
 
 You should see a JSON response with `status: "healthy"`.
+
+---
+
+## Airflow DAG Orchestration
+
+This repository includes an Airflow DAG at `dags/ml_monitoring_pipeline_dag.py`.
+
+**DAG ID:** `ml_monitoring_orchestration`
+
+### What the DAG does
+
+1. Validates required project files
+2. Starts core infrastructure services via Docker Compose
+3. Runs model training + MLflow registration (`scripts/training.py`)
+4. Starts API + Evidently services
+5. Waits for health checks (`/health`)
+6. Runs simulation + drift analysis (`simulations/run_simulation.py`)
+
+### Airflow setup notes
+
+- Ensure Airflow can access this repository folder (including `docker-compose.yml`, `scripts/`, and `simulations/`).
+- Airflow services are included directly in `docker-compose.yml` (`airflow-init`, `airflow-webserver`, `airflow-scheduler`).
+- The DAG is configured for in-network service URLs (`api`, `evidently`, `mlflow`, `minio`) when running in Docker Compose.
+- By default, compose startup tasks inside the DAG are disabled (`ENABLE_DOCKER_COMPOSE_TASKS=false`) to avoid Docker-in-Docker requirements.
+
+### Example run
+
+Start the full stack (including Airflow):
+
+```bash
+docker-compose up -d
+```
+
+Open Airflow UI:
+
+- URL: `http://localhost:8080`
+- Username: `admin`
+- Password: `admin`
+
+Unpause and trigger the DAG:
+
+```bash
+docker-compose exec airflow-webserver airflow dags unpause ml_monitoring_orchestration
+docker-compose exec airflow-webserver airflow dags trigger ml_monitoring_orchestration
+```
 
 ### Generate Test Metrics (API & Drift)
 
@@ -774,6 +820,8 @@ ml-monitoring/
 ├── scripts/                      # Training and utility scripts
 │   ├── training.py               # Model training script
 │   └── requirements.txt
+├── dags/                         # Airflow DAG definitions
+│   └── ml_monitoring_pipeline_dag.py
 ├── docker-compose.yml            # Main orchestration file
 ├── .env.example                  # Environment template
 ├── .env                          # Active environment config
