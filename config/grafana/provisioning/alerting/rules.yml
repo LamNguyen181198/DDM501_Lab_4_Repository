@@ -1,0 +1,380 @@
+apiVersion: 1
+
+# ============================================
+# GRAFANA ALERTING RULES - AUTO-PROVISIONED
+# Credit Card Fraud Detection MLOps Stack
+# ============================================
+
+groups:
+  # ==========================================
+  # API PERFORMANCE ALERTS
+  # ==========================================
+  - orgId: 1
+    name: API Performance
+    folder: ML Monitoring
+    interval: 1m
+    rules:
+
+      - uid: api-high-latency-p95
+        title: "API Latency P95 > 1s"
+        condition: threshold
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-datasource
+            model:
+              expr: histogram_quantile(0.95, rate(api_request_latency_seconds_bucket[5m]))
+              instant: true
+              refId: A
+          - refId: threshold
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              refId: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1.0]
+                  operator:
+                    type: and
+                  query:
+                    params: [threshold]
+                  reducer:
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Latency API vượt ngưỡng 1 giây"
+          description: "P95 latency đang ở {{ $value | humanizeDuration }}, vượt ngưỡng 1s. Kiểm tra tải server hoặc độ phức tạp model."
+        labels:
+          severity: warning
+          component: api
+        isPaused: false
+
+      - uid: api-high-error-rate
+        title: "API Error Rate > 5%"
+        condition: threshold
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-datasource
+            model:
+              expr: |
+                rate(model_prediction_errors_total[5m]) /
+                rate(model_predictions_total[5m])
+              instant: true
+              refId: A
+          - refId: threshold
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              refId: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]
+                  operator:
+                    type: and
+                  query:
+                    params: [threshold]
+                  reducer:
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Tỷ lệ lỗi API cao"
+          description: "Error rate đang ở {{ $value | humanizePercentage }}. Kiểm tra log API và model registry."
+        labels:
+          severity: critical
+          component: api
+        isPaused: false
+
+      - uid: api-low-throughput
+        title: "API Throughput thấp (< 0.1 req/s)"
+        condition: threshold
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-datasource
+            model:
+              expr: rate(model_predictions_total[5m])
+              instant: true
+              refId: A
+          - refId: threshold
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              refId: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [0.1]
+                  operator:
+                    type: and
+                  query:
+                    params: [threshold]
+                  reducer:
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Throughput dự đoán quá thấp"
+          description: "Prediction rate chỉ {{ $value }} req/s trong 10 phút. Hệ thống có thể bị lỗi silent."
+        labels:
+          severity: warning
+          component: api
+        isPaused: false
+
+  # ==========================================
+  # MODEL PREDICTION ALERTS
+  # ==========================================
+  - orgId: 1
+    name: Model Predictions
+    folder: ML Monitoring
+    interval: 1m
+    rules:
+
+      - uid: model-latency-spike
+        title: "Model Prediction Latency P99 > 500ms"
+        condition: threshold
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-datasource
+            model:
+              expr: histogram_quantile(0.99, rate(model_prediction_latency_seconds_bucket[5m]))
+              instant: true
+              refId: A
+          - refId: threshold
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              refId: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.5]
+                  operator:
+                    type: and
+                  query:
+                    params: [threshold]
+                  reducer:
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Model prediction latency đột biến"
+          description: "P99 prediction latency là {{ $value | humanizeDuration }}, vượt 500ms."
+        labels:
+          severity: warning
+          component: model
+        isPaused: false
+
+  # ==========================================
+  # DRIFT DETECTION ALERTS
+  # ==========================================
+  - orgId: 1
+    name: Data Drift
+    folder: ML Monitoring
+    interval: 1m
+    rules:
+
+      - uid: drift-detected
+        title: "Data Drift Phát hiện"
+        condition: threshold
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-datasource
+            model:
+              expr: evidently_data_drift_detected
+              instant: true
+              refId: A
+          - refId: threshold
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              refId: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [threshold]
+                  reducer:
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Data drift được phát hiện"
+          description: "Evidently phát hiện data drift trong production data. Xem báo cáo tại http://localhost:8001/reports"
+        labels:
+          severity: warning
+          component: evidently
+        isPaused: false
+
+      - uid: drift-score-high
+        title: "Drift Score Cao > 0.5"
+        condition: threshold
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-datasource
+            model:
+              expr: evidently_drift_score
+              instant: true
+              refId: A
+          - refId: threshold
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              refId: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.5]
+                  operator:
+                    type: and
+                  query:
+                    params: [threshold]
+                  reducer:
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: "Drift score nghiêm trọng: {{ $value | humanizePercentage }}"
+          description: "Drift score vượt mức nguy hiểm 0.5. Cần xem xét retrain model hoặc cập nhật reference data."
+        labels:
+          severity: critical
+          component: evidently
+        isPaused: false
+
+      - uid: drift-score-moderate
+        title: "Drift Score Vừa Phải > 0.2"
+        condition: threshold
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-datasource
+            model:
+              expr: evidently_drift_score
+              instant: true
+              refId: A
+          - refId: threshold
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              refId: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.2]
+                  operator:
+                    type: and
+                  query:
+                    params: [threshold]
+                  reducer:
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 20m
+        annotations:
+          summary: "Drift score đang ở mức cảnh báo: {{ $value | humanizePercentage }}"
+          description: "Drift score ở mức trung bình. Theo dõi chặt chẽ, có thể cần hành động sớm."
+        labels:
+          severity: warning
+          component: evidently
+        isPaused: false
+
+      - uid: drift-multiple-features
+        title: "Nhiều Feature Bị Drift (>= 3)"
+        condition: threshold
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-datasource
+            model:
+              expr: evidently_drifted_features_count
+              instant: true
+              refId: A
+          - refId: threshold
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              refId: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gte
+                    params: [3]
+                  operator:
+                    type: and
+                  query:
+                    params: [threshold]
+                  reducer:
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "{{ $value }} features đang bị drift"
+          description: "Nhiều feature cùng drift cho thấy sự thay đổi phân phối dữ liệu nghiêm trọng. Xem Feature Drift Matrix trong Grafana."
+        labels:
+          severity: critical
+          component: evidently
+        isPaused: false

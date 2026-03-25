@@ -18,7 +18,7 @@ from starlette.responses import Response
 # ============================================
 
 MLFLOW_TRACKING_URI = os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5000')
-MODEL_NAME = os.getenv('MODEL_NAME', 'wine_quality_model')
+MODEL_NAME = os.getenv('MODEL_NAME', 'credit_fraud_model')
 MODEL_STAGE = os.getenv('MODEL_STAGE', 'Production')  # Production, Staging, None
 
 # Setup logging
@@ -234,8 +234,8 @@ class ModelManager:
 # ============================================
 
 app = FastAPI(
-    title="ML Model API",
-    description="Production ML model serving with monitoring",
+    title="Credit Card Fraud Detection API",
+    description="Production ML API for real-time credit card fraud detection with monitoring and SHAP explainability",
     version="1.0.0"
 )
 
@@ -304,10 +304,11 @@ async def startup_event():
 async def root():
     """Root endpoint"""
     return {
-        "message": "ML Model API",
+        "message": "Credit Card Fraud Detection API",
         "version": "1.0.0",
         "endpoints": {
             "predict": "/predict",
+            "explain": "/explain",
             "health": "/health",
             "metrics": "/metrics",
             "model_info": "/model/info"
@@ -406,6 +407,112 @@ async def reload_model():
 async def metrics():
     """Prometheus metrics endpoint"""
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# ============================================
+# RESPONSIBLE AI — EXPLAINABILITY
+# ============================================
+
+# Credit card fraud detection feature names
+_FRAUD_FEATURE_NAMES = [
+    "amount",
+    "time_of_day",
+    "day_of_week",
+    "merchant_risk_score",
+    "distance_from_home_km",
+    "distance_from_last_txn_km",
+    "ratio_to_median_amount",
+    "repeat_merchant",
+    "used_chip",
+    "used_pin",
+    "online_order",
+    "foreign_transaction",
+    "txn_velocity_1h",
+]
+
+
+def _get_sklearn_model():
+    """Extract the underlying sklearn model from the mlflow pyfunc wrapper."""
+    if model_manager.model is None:
+        return None
+    try:
+        return mlflow.sklearn.load_model(model_manager.model_uri)
+    except Exception:
+        return None
+
+
+@app.post("/explain")
+async def explain(request: PredictionRequest):
+    """
+    Return per-feature attribution values for a single prediction.
+
+    Uses SHAP TreeExplainer when the `shap` package is installed in the
+    container; otherwise falls back to global feature importances.
+    """
+    if model_manager.model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    try:
+        features_array = np.array(request.features, dtype=float).reshape(1, -1)
+        feature_names = request.feature_names or _FRAUD_FEATURE_NAMES
+
+        # Try to get the unwrapped sklearn model for SHAP
+        sklearn_model = _get_sklearn_model()
+        target_model = sklearn_model if sklearn_model is not None else model_manager.model
+
+        # Attempt SHAP
+        try:
+            import shap  # optional dependency
+            explainer = shap.TreeExplainer(target_model)
+            shap_values = explainer.shap_values(features_array)
+
+            pred_class = int(target_model.predict(features_array)[0])
+
+            if isinstance(shap_values, list):
+                sv = shap_values[pred_class][0]
+                base_val = float(explainer.expected_value[pred_class])
+            else:
+                sv = shap_values[0]
+                base_val = float(explainer.expected_value)
+
+            attributions = {
+                name: round(float(val), 6)
+                for name, val in zip(feature_names, sv)
+            }
+            method = "shap"
+        except Exception:
+            # Fallback: feature importances from sklearn model
+            if hasattr(target_model, "feature_importances_"):
+                importances = target_model.feature_importances_
+            else:
+                importances = np.ones(len(feature_names)) / len(feature_names)
+
+            pred_class = int(model_manager.model.predict(features_array)[0])
+            attributions = {
+                name: round(float(val), 6)
+                for name, val in zip(feature_names, importances)
+            }
+            base_val = None
+            method = "feature_importance"
+
+        # Determine top-3 influential features
+        top_features = sorted(
+            attributions.items(), key=lambda x: abs(x[1]), reverse=True
+        )[:3]
+
+        return {
+            "method": method,
+            "predicted_class": pred_class,
+            "base_value": base_val,
+            "attributions": attributions,
+            "top_features": [{"feature": k, "attribution": v} for k, v in top_features],
+            "model_name": model_manager.model_name,
+            "model_version": model_manager.model_version,
+        }
+
+    except Exception as e:
+        logger.error(f"Explain error: {e}")
+        raise HTTPException(status_code=500, detail="Explanation failed")
 
 # ============================================
 # RUN SERVER

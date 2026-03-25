@@ -22,6 +22,118 @@ services:
       - monitoring
 
   # ==========================================
+  # AIRFLOW DATABASE (separate postgres)
+  # ==========================================
+  airflow-postgres:
+    image: postgres:13
+    container_name: ${USER}_monitoring-airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - monitoring
+
+  # ==========================================
+  # AIRFLOW INIT (DB migration + admin user)
+  # ==========================================
+  airflow-init:
+    image: apache/airflow:2.8.0
+    container_name: ${USER}_monitoring-airflow-init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nIFEr4=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _AIRFLOW_DB_MIGRATE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate &&
+        airflow users create --username admin --password admin \
+          --firstname Admin --lastname User --role Admin \
+          --email admin@example.com || true
+    networks:
+      - monitoring
+
+  # ==========================================
+  # AIRFLOW WEBSERVER
+  # ==========================================
+  airflow-webserver:
+    image: apache/airflow:2.8.0
+    container_name: ${USER}_monitoring-airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nIFEr4=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__WEBSERVER__SECRET_KEY=supersecretkey123
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+    volumes:
+      - ./dags:/opt/airflow/dags:ro
+      - ./pipeline:/opt/airflow/pipeline:ro
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    command: airflow webserver
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ==========================================
+  # AIRFLOW SCHEDULER
+  # ==========================================
+  airflow-scheduler:
+    image: apache/airflow:2.8.0
+    container_name: ${USER}_monitoring-airflow-scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nIFEr4=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+    volumes:
+      - ./dags:/opt/airflow/dags:ro
+      - ./pipeline:/opt/airflow/pipeline:ro
+      - airflow_logs:/opt/airflow/logs
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: airflow scheduler
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ==========================================
   # MINIO - S3 Compatible Object Storage
   # ==========================================
   minio:
@@ -82,7 +194,7 @@ services:
     volumes:
       - mlflow_data:/mlflow
     ports:
-      - "5000:5000"
+      - "5001:5000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,7 +222,7 @@ services:
       - "8000:8000"
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MODEL_NAME=wine_quality_model
+      - MODEL_NAME=credit_fraud_model
       - MODEL_STAGE=Production
       - AWS_ACCESS_KEY_ID=minio
       - AWS_SECRET_ACCESS_KEY=minio123
@@ -144,6 +256,8 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/grafana/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./config/prometheus/evidently_alerts.yml:/etc/prometheus/evidently_alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
@@ -363,6 +477,12 @@ volumes:
   postgres_data:
     driver: local
     name: ${USER:-local}_monitoring-postgres_data
+  airflow_postgres_data:
+    driver: local
+    name: ${USER:-local}_monitoring-airflow-postgres_data
+  airflow_logs:
+    driver: local
+    name: ${USER:-local}_monitoring-airflow-logs
   minio_data:
     driver: local
     name: ${USER:-local}_monitoring-minio_data
@@ -384,9 +504,6 @@ volumes:
   evidently_reference:
     driver: local
     name: ${USER:-local}_monitoring-evidently_reference
-  airflow_logs:
-    driver: local
-    name: ${USER:-local}_monitoring-airflow_logs
 
 networks:
   monitoring:

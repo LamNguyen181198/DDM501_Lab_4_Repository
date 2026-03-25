@@ -4,3 +4,14 @@ __pycache__/
 .env
 mlflow_data
 .DS_Store
+
+# Lab archive files (not part of project)
+Lab01/
+Lab02/
+Lab03/
+Lab04/
+*.docx
+0
+
+# Temporary scripts
+scripts/_resolve_conflicts.py
