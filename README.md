@@ -18,8 +18,10 @@ Một hệ thống giám sát machine learning cấp production sử dụng MLFl
 - [Evidently & Phát hiện Drift](#-evidently--phát-hiện-drift)
 - [Simulation & Load Testing](#-simulation--load-testing)
 - [Tài liệu API](#-tài-liệu-api)
+- [Airflow DAG Orchestration](#-airflow-dag-orchestration)
 - [Xử lý sự cố](#-xử-lý-sự-cố)
 - [Cấu trúc dự án](#-cấu-trúc-dự-án)
+
 
 ---
 
@@ -138,6 +140,7 @@ Trước khi bắt đầu, đảm bảo đã cài đặt:
 ## Quick Start
 
 > Thực hiện **đúng thứ tự** các bước dưới đây. Toàn bộ stack gồm 11 containers.
+
 
 ---
 
@@ -946,6 +949,7 @@ DDM501_Lab_4_Repository/
 │   └── openapi.yaml
 ├── docker-compose.yml            # Điều phối toàn bộ stack
 └── README.md                     # File này
+
 ```
 
 ---

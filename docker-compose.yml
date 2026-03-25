@@ -4,7 +4,7 @@ services:
   # ==========================================
   postgres:
     image: postgres:13
-    container_name: ${USER}_monitoring-postgres
+    container_name: ${USER:-local}_monitoring-postgres
     environment:
       POSTGRES_USER: mlflow
       POSTGRES_PASSWORD: mlflow
@@ -138,7 +138,7 @@ services:
   # ==========================================
   minio:
     image: minio/minio:latest
-    container_name: ${USER}_monitoring-minio
+    container_name: ${USER:-local}_monitoring-minio
     command: server /data --console-address ":9001"
     environment:
       - MINIO_ROOT_USER=minio
@@ -161,7 +161,7 @@ services:
   # ==========================================
   minio-init:
     image: minio/mc:latest
-    container_name: ${USER}_monitoring-minio-init
+    container_name: ${USER:-local}_monitoring-minio-init
     depends_on:
       minio:
         condition: service_healthy
@@ -185,7 +185,7 @@ services:
     build:
       context: ./mlflow
       dockerfile: Dockerfile
-    container_name: ${USER}_monitoring-mlflow
+    container_name: ${USER:-local}_monitoring-mlflow
     environment:
       - AWS_ACCESS_KEY_ID=minio
       - AWS_SECRET_ACCESS_KEY=minio123
@@ -217,7 +217,7 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: ${USER}_monitoring-api
+    container_name: ${USER:-local}_monitoring-api
     ports:
       - "8000:8000"
     environment:
@@ -247,7 +247,7 @@ services:
   # ==========================================
   prometheus:
     image: prom/prometheus:latest
-    container_name: ${USER}_monitoring-prometheus
+    container_name: ${USER:-local}_monitoring-prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -272,7 +272,7 @@ services:
   # ==========================================
   grafana:
     image: grafana/grafana:latest
-    container_name: ${USER}_monitoring-grafana
+    container_name: ${USER:-local}_monitoring-grafana
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -298,7 +298,7 @@ services:
     build:
       context: ./evidently
       dockerfile: Dockerfile
-    container_name: ${USER}_monitoring-evidently
+    container_name: ${USER:-local}_monitoring-evidently
     ports:
       - "8001:8001"
     volumes:
@@ -319,40 +319,191 @@ services:
       - monitoring
     restart: unless-stopped
 
+  # ==========================================
+  # AIRFLOW ORCHESTRATION
+  # ==========================================
+  airflow-init:
+    image: apache/airflow:2.10.2
+    container_name: ${USER:-local}_monitoring-airflow-init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://mlflow:mlflow@postgres:5432/postgres
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__WEBSERVER__SECRET_KEY=monitoring-airflow-secret-key
+      - AIRFLOW_UID=50000
+      - PROJECT_ROOT=/opt/project
+      - ENABLE_DOCKER_COMPOSE_TASKS=false
+      - API_HEALTH_URL=http://api:8000/health
+      - EVIDENTLY_HEALTH_URL=http://evidently:8001/health
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MODEL_NAME=wine_quality_model
+      - MODEL_STAGE=Production
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+      - MLFLOW_S3_IGNORE_TLS=true
+      - SIM_API_PREDICTION_URL=http://api:8000/predict
+      - SIM_API_HEALTH_URL=http://api:8000/health
+      - SIM_EVIDENTLY_CAPTURE_URL=http://evidently:8001/capture
+      - SIM_EVIDENTLY_ANALYZE_URL=http://evidently:8001/analyze
+      - _PIP_ADDITIONAL_REQUIREMENTS=mlflow==2.16.2 scikit-learn requests numpy pyyaml tqdm colorama
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/opt/project/scripts
+      - ./simulations:/opt/project/simulations
+      - ./docker-compose.yml:/opt/project/docker-compose.yml:ro
+      - airflow_logs:/opt/airflow/logs
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate && \
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin || true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - monitoring
+
+  airflow-webserver:
+    image: apache/airflow:2.10.2
+    container_name: ${USER:-local}_monitoring-airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://mlflow:mlflow@postgres:5432/postgres
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__WEBSERVER__SECRET_KEY=monitoring-airflow-secret-key
+      - AIRFLOW_UID=50000
+      - PROJECT_ROOT=/opt/project
+      - ENABLE_DOCKER_COMPOSE_TASKS=false
+      - API_HEALTH_URL=http://api:8000/health
+      - EVIDENTLY_HEALTH_URL=http://evidently:8001/health
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MODEL_NAME=wine_quality_model
+      - MODEL_STAGE=Production
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+      - MLFLOW_S3_IGNORE_TLS=true
+      - SIM_API_PREDICTION_URL=http://api:8000/predict
+      - SIM_API_HEALTH_URL=http://api:8000/health
+      - SIM_EVIDENTLY_CAPTURE_URL=http://evidently:8001/capture
+      - SIM_EVIDENTLY_ANALYZE_URL=http://evidently:8001/analyze
+      - _PIP_ADDITIONAL_REQUIREMENTS=mlflow==2.16.2 scikit-learn requests numpy pyyaml tqdm colorama
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/opt/project/scripts
+      - ./simulations:/opt/project/simulations
+      - ./docker-compose.yml:/opt/project/docker-compose.yml:ro
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    command:
+      - bash
+      - -c
+      - rm -f /opt/airflow/airflow-webserver.pid && exec airflow webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  airflow-scheduler:
+    image: apache/airflow:2.10.2
+    container_name: ${USER:-local}_monitoring-airflow-scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://mlflow:mlflow@postgres:5432/postgres
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__WEBSERVER__SECRET_KEY=monitoring-airflow-secret-key
+      - AIRFLOW_UID=50000
+      - PROJECT_ROOT=/opt/project
+      - ENABLE_DOCKER_COMPOSE_TASKS=false
+      - API_HEALTH_URL=http://api:8000/health
+      - EVIDENTLY_HEALTH_URL=http://evidently:8001/health
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MODEL_NAME=wine_quality_model
+      - MODEL_STAGE=Production
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+      - MLFLOW_S3_IGNORE_TLS=true
+      - SIM_API_PREDICTION_URL=http://api:8000/predict
+      - SIM_API_HEALTH_URL=http://api:8000/health
+      - SIM_EVIDENTLY_CAPTURE_URL=http://evidently:8001/capture
+      - SIM_EVIDENTLY_ANALYZE_URL=http://evidently:8001/analyze
+      - _PIP_ADDITIONAL_REQUIREMENTS=mlflow==2.16.2 scikit-learn requests numpy pyyaml tqdm colorama
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/opt/project/scripts
+      - ./simulations:/opt/project/simulations
+      - ./docker-compose.yml:/opt/project/docker-compose.yml:ro
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - monitoring
+    restart: unless-stopped
+
 # ==========================================
 # VOLUMES
 # ==========================================
 volumes:
   postgres_data:
     driver: local
-    name: ${USER}_monitoring-postgres_data
+    name: ${USER:-local}_monitoring-postgres_data
   airflow_postgres_data:
     driver: local
-    name: ${USER}_monitoring-airflow-postgres_data
+    name: ${USER:-local}_monitoring-airflow-postgres_data
   airflow_logs:
     driver: local
-    name: ${USER}_monitoring-airflow-logs
+    name: ${USER:-local}_monitoring-airflow-logs
   minio_data:
     driver: local
-    name: ${USER}_monitoring-minio_data
+    name: ${USER:-local}_monitoring-minio_data
   mlflow_data:
     driver: local
-    name: ${USER}_monitoring-mlflow_data
+    name: ${USER:-local}_monitoring-mlflow_data
   prometheus_data:
     driver: local
-    name: ${USER}_monitoring-prometheus_data
+    name: ${USER:-local}_monitoring-prometheus_data
   grafana_data:
     driver: local
-    name: ${USER}_monitoring-grafana_data
+    name: ${USER:-local}_monitoring-grafana_data
   evidently_data:
     driver: local
-    name: ${USER}_monitoring-evidently_data
+    name: ${USER:-local}_monitoring-evidently_data
   evidently_reports:
     driver: local
-    name: ${USER}_monitoring-evidently_reports
+    name: ${USER:-local}_monitoring-evidently_reports
   evidently_reference:
     driver: local
-    name: ${USER}_monitoring-evidently_reference
+    name: ${USER:-local}_monitoring-evidently_reference
 
 networks:
   monitoring:
