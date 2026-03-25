@@ -1,0 +1,471 @@
+openapi: 3.0.3
+info:
+  title: Credit Card Fraud Detection API
+  description: |
+    Production REST API for the Credit Card Fraud Detection classification model.
+
+    - **Model**: RandomForest Classifier (scikit-learn, class_weight=balanced)
+    - **Registry**: MLflow (Production stage)
+    - **Monitoring**: Prometheus metrics exposed at `/metrics`
+    - **Explainability**: SHAP-based feature attributions at `/explain`
+    - **Output**: Binary — `0` = legitimate, `1` = fraud
+
+    ### Quick start
+    ```bash
+    # Health check
+    curl http://localhost:8000/health
+
+    # Single prediction
+    curl -X POST http://localhost:8000/predict \
+      -H "Content-Type: application/json" \
+      -d '{"features": [0.52, -0.31, 1.14, 0.78, -0.45, 0.93, -1.20, 0.38, 0.61, -0.77, 0.14, 0.89, -0.23]}'
+
+    # Explain that prediction
+    curl -X POST http://localhost:8000/explain \
+      -H "Content-Type: application/json" \
+      -d '{"features": [0.52, -0.31, 1.14, 0.78, -0.45, 0.93, -1.20, 0.38, 0.61, -0.77, 0.14, 0.89, -0.23]}'
+    ```
+  version: "1.0.0"
+  contact:
+    name: DDM501 Group 4
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+tags:
+  - name: Core
+    description: Health and service discovery
+  - name: Prediction
+    description: Model inference endpoints
+  - name: Explainability
+    description: Responsible AI — SHAP feature attributions
+  - name: Model Management
+    description: MLflow model registry operations
+  - name: Observability
+    description: Prometheus metrics
+
+paths:
+  /:
+    get:
+      tags: [Core]
+      summary: Service discovery
+      description: Returns API version and list of all available endpoints.
+      operationId: root
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootResponse"
+              example:
+                message: Credit Card Fraud Detection API
+                version: 1.0.0
+                endpoints:
+                  predict: /predict
+                  explain: /explain
+                  health: /health
+                  metrics: /metrics
+                  model_info: /model/info
+
+  /health:
+    get:
+      tags: [Core]
+      summary: Health check
+      description: Returns service health status and model load state.
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy and model is loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: healthy
+                model_loaded: true
+                model_name: credit_fraud_model
+                model_version: "4"
+                uptime_seconds: 3612.5
+
+  /predict:
+    post:
+      tags: [Prediction]
+      summary: Classify a credit card transaction
+      description: |
+        Runs inference on the Production-stage model loaded from MLflow.
+        Returns 0 (legitimate) or 1 (fraud).
+
+        The model expects **13 standardized numerical features** in this order:
+
+        | # | Feature | Description |
+        |---|---------|-------------|
+        | 0 | amount | Normalized transaction amount |
+        | 1 | time_of_day | Hour of day (standardized) |
+        | 2 | day_of_week | Day of week (standardized) |
+        | 3 | merchant_risk_score | Merchant fraud risk score |
+        | 4 | distance_from_home_km | Distance from cardholder home |
+        | 5 | distance_from_last_txn_km | Distance from last transaction |
+        | 6 | ratio_to_median_amount | Ratio to median spend |
+        | 7 | repeat_merchant | Whether merchant was used before |
+        | 8 | used_chip | Chip was used |
+        | 9 | used_pin | PIN was entered |
+        | 10 | online_order | Transaction is online |
+        | 11 | foreign_transaction | Transaction in foreign country |
+        | 12 | txn_velocity_1h | Transactions in last 1 hour |
+
+        **Return classes**: 0 (legitimate) or 1 (fraud)
+      operationId: predict
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictionRequest"
+            examples:
+              legitimate_txn:
+                summary: Legitimate transaction
+                value:
+                  features: [-0.31, 0.42, -0.15, -0.88, 0.11, -0.57, 0.23, 0.76, -0.34, 0.95, -0.62, 0.18, -0.41]
+              fraud_txn:
+                summary: Fraudulent transaction
+                value:
+                  features: [0.52, -0.31, 1.14, 0.78, -0.45, 0.93, -1.20, 0.38, 0.61, -0.77, 0.14, 0.89, -0.23]
+              minimal:
+                summary: Features only (names omitted)
+                value:
+                  features: [0.10, 0.20, -0.10, 0.50, 0.30, -0.20, 0.40, -0.30, 0.15, -0.15, 0.05, 0.25, -0.05]
+      responses:
+        "200":
+          description: Prediction successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PredictionResponse"
+              example:
+                prediction: 1.0
+                model_name: credit_fraud_model
+                model_version: "4"
+                timestamp: "2026-03-23T10:15:30.123456"
+                latency_ms: 3.21
+        "400":
+          description: Invalid input (wrong number of features, non-numeric values)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: "could not convert string to float"
+        "503":
+          description: Model not loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: Model not loaded
+
+  /explain:
+    post:
+      tags: [Explainability]
+      summary: Explain a prediction (SHAP)
+      description: |
+        Returns per-feature attribution values for a single prediction using
+        **SHAP TreeExplainer** (falls back to global `feature_importances_`
+        if the `shap` package is not installed in the container).
+
+        ### Interpreting attributions
+        - **Positive value** → feature pushes toward fraud (class 1)
+        - **Negative value** → feature pushes toward legitimate (class 0)
+        - `base_value` is the model average output (expected value)
+
+        ### Method field
+        | Value | Meaning |
+        |-------|---------|
+        | `shap` | Local SHAP values (sample-specific, recommended) |
+        | `feature_importance` | Global RF importances (fallback, not sample-specific) |
+      operationId: explain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictionRequest"
+            example:
+              features: [0.52, -0.31, 1.14, 0.78, -0.45, 0.93, -1.20, 0.38, 0.61, -0.77, 0.14, 0.89, -0.23]
+      responses:
+        "200":
+          description: Explanation successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExplainResponse"
+              example:
+                method: shap
+                predicted_class: 1
+                base_value: -1.2034
+                attributions:
+                  amount: 0.312
+                  time_of_day: -0.041
+                  day_of_week: 0.008
+                  merchant_risk_score: 0.265
+                  distance_from_home_km: 0.195
+                  distance_from_last_txn_km: 0.143
+                  ratio_to_median_amount: 0.389
+                  repeat_merchant: -0.015
+                  used_chip: -0.009
+                  used_pin: -0.022
+                  online_order: 0.118
+                  foreign_transaction: 0.072
+                  txn_velocity_1h: 0.041
+                top_features:
+                  - feature: ratio_to_median_amount
+                    attribution: 0.389
+                  - feature: amount
+                    attribution: 0.312
+                  - feature: merchant_risk_score
+                    attribution: 0.265
+                model_name: credit_fraud_model
+                model_version: "4"
+        "503":
+          description: Model not loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Explanation failed (internal error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /model/info:
+    get:
+      tags: [Model Management]
+      summary: Get current model metadata
+      description: Returns the loaded model name, version, MLflow URI, and load time.
+      operationId: modelInfo
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelInfoResponse"
+              example:
+                model_name: credit_fraud_model
+                model_version: "4"
+                model_uri: models:/credit_fraud_model/Production
+                load_time_seconds: 1.23
+                tracking_uri: http://mlflow:5000
+        "503":
+          description: Model not loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /model/reload:
+    post:
+      tags: [Model Management]
+      summary: Hot-reload model from MLflow registry
+      description: |
+        Pulls the latest Production model from MLflow without restarting the
+        container. Useful for zero-downtime model updates.
+      operationId: reloadModel
+      responses:
+        "200":
+          description: Model reloaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Model reloaded successfully
+                  model_version:
+                    type: string
+                    example: "5"
+        "500":
+          description: Reload failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /metrics:
+    get:
+      tags: [Observability]
+      summary: Prometheus metrics
+      description: |
+        Exposes all Prometheus metrics in the standard text exposition format.
+        Scraped every 15 s by Prometheus (configured in `config/prometheus.yml`).
+
+        ### Metrics exposed
+        | Metric | Type | Description |
+        |--------|------|-------------|
+        | `api_requests_total` | Counter | Total HTTP requests by method/endpoint/status |
+        | `api_request_latency_seconds` | Histogram | End-to-end request latency |
+        | `model_predictions_total` | Counter | Total predictions by model/version |
+        | `model_prediction_latency_seconds` | Histogram | Inference-only latency |
+        | `model_prediction_value` | Histogram | Distribution of predicted class values (0/1) |
+        | `model_prediction_errors_total` | Counter | Errors by type |
+        | `model_version_info` | Gauge | Currently loaded model version |
+        | `model_load_time_seconds` | Gauge | Seconds taken to load the model |
+        | `model_feature_value` | Histogram | Per-feature distribution (drift detection) |
+      operationId: prometheusMetrics
+      responses:
+        "200":
+          description: Prometheus text format
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP api_requests_total Total API requests
+                # TYPE api_requests_total counter
+                api_requests_total{endpoint="/predict",method="POST",status="200"} 142.0
+
+components:
+  schemas:
+    PredictionRequest:
+      type: object
+      required:
+        - features
+      properties:
+        features:
+          type: array
+          items:
+            type: number
+            format: float
+          minItems: 13
+          maxItems: 13
+          description: "13 standardized credit card transaction features"
+          example: [0.52, -0.31, 1.14, 0.78, -0.45, 0.93, -1.20, 0.38, 0.61, -0.77, 0.14, 0.89, -0.23]
+        feature_names:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: "Optional feature labels. Defaults to fraud detection feature names."
+          example: ["amount","time_of_day","day_of_week","merchant_risk_score",
+                    "distance_from_home_km","distance_from_last_txn_km",
+                    "ratio_to_median_amount","repeat_merchant","used_chip",
+                    "used_pin","online_order","foreign_transaction","txn_velocity_1h"]
+
+    PredictionResponse:
+      type: object
+      properties:
+        prediction:
+          type: number
+          format: float
+          description: "Predicted class: 0 = legitimate, 1 = fraud"
+          example: 1.0
+        model_name:
+          type: string
+          example: credit_fraud_model
+        model_version:
+          type: string
+          example: "4"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-23T10:15:30.123456"
+        latency_ms:
+          type: number
+          format: float
+          description: Total round-trip latency in milliseconds
+          example: 3.21
+
+    ExplainResponse:
+      type: object
+      properties:
+        method:
+          type: string
+          enum: [shap, feature_importance]
+          description: Attribution method used
+        predicted_class:
+          type: integer
+          description: The class the model predicted (0 = legitimate, 1 = fraud)
+        base_value:
+          type: number
+          nullable: true
+          description: SHAP expected model output (null when method=feature_importance)
+        attributions:
+          type: object
+          additionalProperties:
+            type: number
+          description: Per-feature attribution scores
+        top_features:
+          type: array
+          items:
+            type: object
+            properties:
+              feature:
+                type: string
+              attribution:
+                type: number
+          description: Top 3 most influential features (absolute attribution)
+        model_name:
+          type: string
+        model_version:
+          type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        model_loaded:
+          type: boolean
+        model_name:
+          type: string
+        model_version:
+          type: string
+        uptime_seconds:
+          type: number
+          format: float
+
+    ModelInfoResponse:
+      type: object
+      properties:
+        model_name:
+          type: string
+        model_version:
+          type: string
+        model_uri:
+          type: string
+          description: MLflow model URI (e.g. models:/credit_fraud_model/Production)
+        load_time_seconds:
+          type: number
+          format: float
+        tracking_uri:
+          type: string
+
+    RootResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        version:
+          type: string
+        endpoints:
+          type: object
+          additionalProperties:
+            type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message

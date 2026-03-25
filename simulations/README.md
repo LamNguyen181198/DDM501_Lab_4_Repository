@@ -31,7 +31,7 @@ This simulation toolkit allows you to:
 ## ✨ Features
 
 ### Data Generation
-- ✅ Realistic wine dataset simulation
+- ✅ Realistic credit card fraud dataset simulation
 - ✅ Configurable feature distributions
 - ✅ 5 drift scenarios (normal to severe)
 - ✅ Customizable noise levels

@@ -20,7 +20,7 @@ global:
 
 # Load rules once and periodically evaluate them
 rule_files:
-  # - "alerts.yml"
+  - "alerts.yml"            # API, model, system, Airflow, MLFlow alerts
   - "evidently_alerts.yml"  # Evidently AI drift detection alerts
 
 # Scrape configurations
